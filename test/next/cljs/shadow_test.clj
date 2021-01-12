@@ -2,8 +2,10 @@
   (:require [clojure.string :as string]
             [clojure.test :refer [deftest is testing]]
             [next.cljs.shadow :refer [create-pages
+                                      flush-files
                                       generate-next-js-app
-                                      log-warning]]))
+                                      log-warning
+                                      write-file]]))
 
 (deftest configure-test
   (testing "raises error if :target is not :next.cljs/next-js-app"
@@ -73,3 +75,9 @@
                      :content "export {page_2 as default} from '../../../cljs/some_namespace.other.js';"}]
           actual (create-pages vars)]
       (is (= expected actual)))))
+
+(deftest flush-files-test
+  (testing "Raises an error if one of the passed-in files does not conform to the expected interface."
+    (with-redefs [write-file (fn [& args] args)]
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (flush-files "blah" [{:wrong "wrong"}]))))))

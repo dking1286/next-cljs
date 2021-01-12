@@ -2,7 +2,10 @@
   (:refer-clojure :exclude [flush])
   (:require [cljs.compiler :as cljs]
             [clojure.java.io :as io]
-            [clojure.string :as string]))
+            [clojure.spec.alpha :as s]
+            [clojure.string :as string]
+            [next.cljs.file :as file]
+            [next.cljs.utils :as utils]))
 
 (def ^{:doc "Path relative to :next.cljs/output-dir where the js files generated
              by the cljs compiler will be written."}
@@ -99,6 +102,17 @@
        (filter (fn [[page _]] page))
        (map create-page)))
 
+(defn write-file
+  [root-dir path content]
+  (let [out-file (io/file root-dir path)]
+    (io/make-parents out-file)
+    (spit out-file content)))
+
+(defn flush-files
+  [root-dir files]
+  (doseq [{:keys [path content]} (utils/conform! (s/coll-of ::file/file) files)]
+    (write-file root-dir path content)))
+
 (defn ^:private flush
   "Generates next.js page files to allow the js files created by the cljs
    compiler to be consumed by next.js."
@@ -106,10 +120,7 @@
   (let [output-dir (get-in state [:shadow.build/config :next.cljs/output-dir])
         vars (all-vars state)
         pages (create-pages vars)]
-    (doseq [{:keys [path content]} pages]
-      (let [out-file (io/file output-dir path)]
-        (io/make-parents out-file)
-        (spit out-file content)))
+    (flush-files output-dir pages)
     state))
 
 (defn generate-next-js-app
