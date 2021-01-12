@@ -1,7 +1,8 @@
 (ns next.cljs.shadow-test
   (:require [clojure.string :as string]
             [clojure.test :refer [deftest is testing]]
-            [next.cljs.shadow :refer [generate-next-js-app
+            [next.cljs.shadow :refer [create-pages
+                                      generate-next-js-app
                                       log-warning]]))
 
 (deftest configure-test
@@ -42,3 +43,33 @@
           actual (-> (generate-next-js-app state)
                      (get-in [:shadow.build/config :output-dir]))]
       (is (= actual expected)))))
+
+(deftest create-pages-test
+  (testing "Raises an error if a var is missing :next.cljs/export-as"
+    (let [vars [{:name 'some-namespace.core/page-1
+                 :meta {:next.cljs/page "some/page"}}
+                {:name 'some-namespace.core/some-func
+                 :meta {:next.cljs/page "some/page"
+                        :next.cljs/export-as "getStaticProps"}}
+                {:name 'some-namespace.other/page-2
+                 :meta {:next.cljs/page "some/other/page"
+                        :next.cljs/export-as "default"}}]]
+      (is (thrown?
+           IllegalArgumentException
+           (doall (create-pages vars))))))
+  (testing "Returns a file with exports for vars with :next.cljs/page metadata"
+    (let [vars [{:name 'some-namespace.core/page-1
+                 :meta {:next.cljs/page "some/page"
+                        :next.cljs/export-as "default"}}
+                {:name 'some-namespace.core/some-func
+                 :meta {:next.cljs/page "some/page"
+                        :next.cljs/export-as "getStaticProps"}}
+                {:name 'some-namespace.other/page-2
+                 :meta {:next.cljs/page "some/other/page"
+                        :next.cljs/export-as "default"}}]
+          expected [{:path "src/pages/some/page.js"
+                     :content "export {page_1 as default, some_func as getStaticProps} from '../../cljs/some_namespace.core.js';"}
+                    {:path "src/pages/some/other/page.js"
+                     :content "export {page_2 as default} from '../../../cljs/some_namespace.other.js';"}]
+          actual (create-pages vars)]
+      (is (= expected actual)))))
