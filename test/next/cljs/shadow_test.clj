@@ -44,4 +44,4 @@
   (testing "Raises an error if one of the passed-in files does not conform to the expected interface."
     (with-redefs [write-file (fn [& args] args)]
       (is (thrown? clojure.lang.ExceptionInfo
-                   (flush-files "blah" [{:wrong "wrong"}]))))))
+                   (flush-files [{:wrong "wrong"}]))))))
