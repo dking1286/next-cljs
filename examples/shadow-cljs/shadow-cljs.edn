@@ -1,0 +1,7 @@
+{:deps true
+
+ :builds {:site {:target :npm-module
+                 :output-dir ".next-cljs/src/cljs"
+                 :next.cljs/pages-dir ".next-cljs/src/pages"
+                 :build-hooks [(next.cljs.shadow/generate-next-js-app)]
+                 :entries [next.cljs.examples.shadow-cljs]}}}

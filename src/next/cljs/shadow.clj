@@ -5,17 +5,20 @@
             [clojure.spec.alpha :as s]
             [clojure.string :as string]
             [next.cljs.file :as file]
-            [next.cljs.utils :as utils]))
+            [next.cljs.utils :as utils])
+  (:import [java.nio.file Paths]))
 
-(def ^{:doc "Path relative to :next.cljs/output-dir where the js files generated
-             by the cljs compiler will be written."}
-  cljs-src-path
-  "src/cljs")
+(defn ^:private path-of
+  [str-path]
+  (Paths/get str-path (into-array [""])))
 
-(def ^{:doc "Path relative to :next.cljs/output-dir where the next.js page
-             files will be written."}
-  pages-src-path
-  "src/pages")
+(defn relative-import-path
+  [from to]
+  (let [from-path (path-of from)
+        to-path (path-of to)]
+    (-> (.getParent from-path)
+        (.relativize to-path)
+        (.toString))))
 
 (defn log-warning
   "Logs a warning to the console."
@@ -26,23 +29,11 @@
   "Updates the shadow.cljs configuration to generate :npm-modules in a format
    consumable by next.js."
   [state]
-  (let [target (get-in state [:shadow.build/config :target])
-        output-dir (get-in state [:shadow.build/config :output-dir])
-        next-output-dir (get-in state [:shadow.build/config :next.cljs/output-dir])]
-    (when-not (= target :next.cljs/next-js-app)
-      (throw (IllegalArgumentException. (str "Expected target to be "
-                                             ":next.cljs/next-js-app, "
-                                             "found " target))))
-    (when output-dir
-      (log-warning (str "Found :output-dir in build config with "
-                        " :target :next.cljs/next-js-app, this will be ignored.")))
-    (when-not next-output-dir
-      (throw (IllegalArgumentException. (str "No :next.cljs/output-dir found "
-                                             "in build configuration."))))
-    (-> state
-        (assoc-in [:shadow.build/config :target] :npm-module)
-        (assoc-in [:shadow.build/config :output-dir]
-                  (str next-output-dir "/" cljs-src-path)))))
+  (let [target (get-in state [:shadow.build/config :target])]
+    (when-not (= :npm-module target)
+      (throw (IllegalArgumentException. ":target must be :npm-module")))
+    ;; TODO: Put more validation here
+    state))
 
 (defn ^:private all-vars
   "Gets a seq of maps, each representing one of the vars from the cljs compiler
@@ -60,14 +51,14 @@
    a string representing the relative page URL of the next.js page, and
    'page-vars' is a seq of maps representing the vars that were annotated with
    that page url in their :next.cljs/page metadata."
-  [[page page-vars]]
+  [output-dir pages-dir [page page-vars]]
   (doseq [var page-vars]
     (when-not (-> var :meta :next.cljs/export-as)
       (throw (IllegalArgumentException. (str "Found var " (:name var)
                                              " with :next.cljs/page "
                                              " but no :next.cljs/export-as.")))))
   (let [path
-        (str pages-src-path "/" page ".js")
+        (str pages-dir "/" page ".js")
 
         content
         (->> (group-by :js-ns page-vars)
@@ -80,12 +71,10 @@
                                           (-> pv :meta :next.cljs/export-as))))
                               (string/join ", "))
                          "} from '"
-                         (->> (string/split page #"/")
-                              (map (constantly ".."))
-                              (string/join "/"))
-                         "/cljs/"
-                         js-ns
-                         ".js';")))
+                         (relative-import-path
+                          path
+                          (str output-dir "/" js-ns ".js"))
+                         "';")))
              (string/join "\n"))]
     {:path path
      :content content}))
@@ -93,34 +82,38 @@
 (defn create-pages
   "Creates a seq of maps, each representing one next.js page file that should
    be generated."
-  [vars]
+  [output-dir pages-dir vars]
   (->> vars
        (map (fn [var] (assoc var
                              :js-ns (-> var :name namespace cljs/munge)
                              :js-var (-> var :name name cljs/munge))))
        (group-by #(get-in % [:meta :next.cljs/page]))
        (filter (fn [[page _]] page))
-       (map create-page)))
+       (map #(create-page output-dir pages-dir %))))
+
+(defn patch-cljs-env
+  [])
 
 (defn write-file
-  [root-dir path content]
-  (let [out-file (io/file root-dir path)]
+  [path content]
+  (let [out-file (io/file path)]
     (io/make-parents out-file)
     (spit out-file content)))
 
 (defn flush-files
-  [root-dir files]
+  [files]
   (doseq [{:keys [path content]} (utils/conform! (s/coll-of ::file/file) files)]
-    (write-file root-dir path content)))
+    (write-file path content)))
 
 (defn ^:private flush
   "Generates next.js page files to allow the js files created by the cljs
    compiler to be consumed by next.js."
   [state]
-  (let [output-dir (get-in state [:shadow.build/config :next.cljs/output-dir])
+  (let [output-dir (get-in state [:shadow.build/config :output-dir])
+        pages-dir (get-in state [:shadow.build/config :next.cljs/pages-dir])
         vars (all-vars state)
-        pages (create-pages vars)]
-    (flush-files output-dir pages)
+        pages (create-pages output-dir pages-dir vars)]
+    (flush-files pages)
     state))
 
 (defn generate-next-js-app

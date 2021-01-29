@@ -9,10 +9,14 @@ pom.xml.asc
 .calva
 .clj-kondo/.cache
 .clj-kondo/cache
+.cpcache/
 .lein-deps-sum
 .lein-repl-history
 .lein-plugins/
 .lein-failures
 .lsp
 .nrepl-port
-.cpcache/
+.shadow-cljs
+node_modules
+**/.next-cljs/node_modules
+**/.next-cljs/src
